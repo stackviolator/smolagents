@@ -9,4 +9,4 @@ COPY . /app/smolagents
 
 RUN pip install dill ./smolagents
 
-CMD ["python", "test.py"]
+CMD ["python", "load_interpreter.py"]
