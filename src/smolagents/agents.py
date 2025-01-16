@@ -29,6 +29,7 @@ from rich.console import Console
 
 from .default_tools import FinalAnswerTool, TOOL_MAPPING
 from .e2b_executor import E2BExecutor
+from .docker_executor import DockerExecutor
 from .local_python_executor import (
     BASE_BUILTIN_MODULES,
     LocalPythonInterpreter,
@@ -890,7 +891,7 @@ class CodeAgent(MultiStepAgent):
         grammar: Optional[Dict[str, str]] = None,
         additional_authorized_imports: Optional[List[str]] = None,
         planning_interval: Optional[int] = None,
-        use_e2b_executor: bool = False,
+        executor: str | None = None,
         **kwargs,
     ):
         if system_prompt is None:
@@ -926,18 +927,26 @@ class CodeAgent(MultiStepAgent):
                 0,
             )
 
-        if use_e2b_executor and len(self.managed_agents) > 0:
-            raise Exception(
-                f"You passed both {use_e2b_executor=} and some managed agents. Managed agents is not yet supported with remote code execution."
-            )
-
         all_tools = {**self.tools, **self.managed_agents}
-        if use_e2b_executor:
+        if executor == "e2b":
+            if len(self.managed_agents) > 0:
+                raise Exception(
+                    f"You passed both {executor=} and some managed agents. Managed agents is not yet supported with remote code execution."
+                )
             self.python_executor = E2BExecutor(
                 self.additional_authorized_imports,
                 list(all_tools.values()),
                 self.logger,
             )
+        elif executor == "docker":
+            lpi = LocalPythonInterpreter(
+                self.additional_authorized_imports,
+                all_tools,
+            )
+            self.python_executor = DockerExecutor(
+                local_python_interpreter=lpi
+            )
+        # Default case, use local executor
         else:
             self.python_executor = LocalPythonInterpreter(
                 self.additional_authorized_imports,
