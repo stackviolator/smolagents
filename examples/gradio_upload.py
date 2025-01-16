@@ -5,7 +5,7 @@ from smolagents import (
 )
 
 agent = CodeAgent(
-    tools=[], model=HfApiModel(), max_steps=4, verbosity_level=1
+    tools=[], model=HfApiModel(), max_steps=4, verbosity_level=1, executor="docker"
 )
 
 GradioUI(agent, file_upload_folder='./data').launch()
