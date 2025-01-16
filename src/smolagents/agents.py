@@ -939,13 +939,11 @@ class CodeAgent(MultiStepAgent):
                 self.logger,
             )
         elif executor == "docker":
-            lpi = LocalPythonInterpreter(
-                self.additional_authorized_imports,
-                all_tools,
-            )
             self.python_executor = DockerExecutor(
-                local_python_interpreter=lpi
+                authorized_imports=self.additional_authorized_imports,
+                tools=all_tools,
             )
+
         # Default case, use local executor
         else:
             self.python_executor = LocalPythonInterpreter(

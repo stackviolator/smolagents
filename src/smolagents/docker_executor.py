@@ -1,7 +1,7 @@
 import ast
 import docker
-import dill
-import base64
+import importlib
+
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .tool_validation import validate_tool_attributes
@@ -12,23 +12,36 @@ def kill_self():
     import sys; sys.exit(0)
 
 class DockerExecutor:
-    def __init__(self, local_python_interpreter):
+    def __init__(self, authorized_imports, tools):
         self.image_name = "temp-python-executor"
         self.container_name = "smolagents-executor"
+        self.authorized_imports = authorized_imports
+        self.tools = self.serialize_tools_dict(tools)
 
-        self.local_python_interpreter = local_python_interpreter
         self.client = self.get_client()
         if self.client is False:
             print("[-] Docker daemon is not running. Start the daemon with \"sudo systemctl start docker\".")
             kill_self()
 
-        self.encoded_obj = base64.b64encode(dill.dumps(local_python_interpreter)).decode('utf-8')
         self.image = self.build_image(self.image_name)
 
-    """
-    Only supports docker, not podman. Especially not on Mac. podman on Mac only uses ssh sockets, not unix sockets. Very annoying.
-    """
+    def serialize_tools_dict(self, tools_dict: dict):
+        """
+        Return a dictionary with keys as tool names and values as their type strings.
+        """
+        serialized = {}
+        for key, tool_obj in tools_dict.items():
+            if hasattr(tool_obj, "__name__"):
+                obj_type_name = tool_obj.__name__
+            else:
+                obj_type_name = f"{type(tool_obj).__module__}.{type(tool_obj).__name__}"
+            serialized[key] = obj_type_name
+        return serialized
+
     def get_client(self):
+        """
+        Only supports docker, not podman. Especially not on Mac. podman on Mac only uses ssh sockets, not unix sockets. Very annoying.
+        """
         try:
             client = docker.from_env()
             client.ping()
@@ -69,17 +82,26 @@ class DockerExecutor:
         container.stop()
         container.remove()
 
-    def execute_command(self, encoded_interpreter, code_action, additional_variables) -> Tuple[Any, str, bool]:
+    def execute_command(self, code_action, additional_variables) -> Tuple[Any, str, bool]:
         try:
             container = self.client.containers.run(
                 image=self.image_name,
                 name=self.container_name,
                 ports={"5000/tcp": 5000},
-                environment={"ENCODED_INTERPRETER": encoded_interpreter, "CODE_ACTION": code_action, "ADDITIONAL_VARIABLES":additional_variables}
+                environment={
+                    "AUTHORIZED_IMPORTS": self.authorized_imports,
+                    "TOOLS": self.tools,
+                    "CODE_ACTION": code_action,
+                    "ADDITIONAL_VARIABLES":additional_variables,
+                }
             )
 
-            output = container.decode(('utf-8'))
+            print(container.decode('utf-8'))
+
+            output = container.decode('utf-8')
             output = self.parse_tuple(output)
+        except Exception as e:
+            print(f"Error execution command: {e}")
         finally:
             try:
                 self.stop_container(container_name=self.container_name)
@@ -90,6 +112,8 @@ class DockerExecutor:
     def parse_tuple(self, input_str: str) -> Tuple[Any, str, bool]:
         try:
             input_str = input_str.rstrip()
+            if "Error processing" in input_str:
+                return (input_str.replace("Error processing: ", ""), "Error processing commands", False)
             parsed_tuple = ast.literal_eval(input_str)
 
             if isinstance(parsed_tuple, tuple) and len(parsed_tuple) == 3:
@@ -105,4 +129,4 @@ class DockerExecutor:
         self, code_action: str, additional_variables: Dict
     ) -> Tuple[Any, str, bool]:
         
-        return self.execute_command(self.encoded_obj, code_action=code_action, additional_variables=additional_variables)
+        return self.execute_command(code_action=code_action, additional_variables=additional_variables)
