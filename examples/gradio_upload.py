@@ -12,5 +12,3 @@ agent = CodeAgent(
 )
 
 GradioUI(agent, file_upload_folder='./data').launch()
-
-agent.run("What is the weather in Istanbul")

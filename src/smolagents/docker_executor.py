@@ -1,15 +1,6 @@
 import ast
 import docker
-import importlib
-
-from typing import Any, Callable, Dict, List, Optional, Tuple
-
-from .tool_validation import validate_tool_attributes
-from .tools import Tool
-from .utils import BASE_BUILTIN_MODULES, instance_to_source
-
-def kill_self():
-    import sys; sys.exit(0)
+from typing import Any, Dict, Tuple
 
 class DockerExecutor:
     def __init__(self, authorized_imports, tools):
@@ -21,7 +12,7 @@ class DockerExecutor:
         self.client = self.get_client()
         if self.client is False:
             print("[-] Docker daemon is not running. Start the daemon with \"sudo systemctl start docker\".")
-            kill_self()
+            import sys; sys.exit(0)
 
         self.image = self.build_image(self.image_name)
 
@@ -93,10 +84,11 @@ class DockerExecutor:
                     "TOOLS": self.tools,
                     "CODE_ACTION": code_action,
                     "ADDITIONAL_VARIABLES":additional_variables,
-                }
+                },
+                stdout=True,
+                stderr=True,
+                detach=False
             )
-
-            print(container.decode('utf-8'))
 
             output = container.decode('utf-8')
             output = self.parse_tuple(output)
@@ -114,6 +106,10 @@ class DockerExecutor:
             input_str = input_str.rstrip()
             if "Error processing" in input_str:
                 return (input_str.replace("Error processing: ", ""), "Error processing commands", False)
+            
+            # Remove no torch warnging
+            input_str = input_str[input_str.find('('):]
+
             parsed_tuple = ast.literal_eval(input_str)
 
             if isinstance(parsed_tuple, tuple) and len(parsed_tuple) == 3:
